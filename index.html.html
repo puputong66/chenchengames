@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>雙輪盤抽籤遊戲｜MVP</title>
+  <style>
+    :root{
+      --bg:#e9f8ef;
+      --card:#ffffff;
+      --text:#114033;
+      --muted:#6aa786;
+      --accent:#5bd6a0;
+      --slice1:#c9f0da;
+      --slice2:#aee5c7;
+      --slice3:#93dab5;
+      --slice4:#7ccca4;
+      --slice5:#66be94;
+      --slice6:#4fbf8f;
+      --shadow: 0 8px 30px rgba(0,0,0,.08);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; font-family: system-ui, -apple-system, "Noto Sans TC", Segoe UI, Roboto, Helvetica, Arial;
+      background: var(--bg);
+      color: var(--text);
+      display:flex; align-items:center; justify-content:center; padding:24px;
+    }
+    .wrap{width:min(1100px,100%);}
+    .title{ text-align:center; margin: 8px 0 18px; font-weight:700; }
+    .grid{display:grid; gap:18px; grid-template-columns: 1fr;}
+    @media (min-width: 900px){ .grid{ grid-template-columns: 1fr 1fr; gap:24px; } }
+    .card{ background:var(--card); border-radius:20px; box-shadow:var(--shadow); padding:18px 18px 24px; }
+    .wheel-box{ position:relative; display:flex; align-items:center; justify-content:center; padding:6px; }
+    .wheel{ width:100%; max-width:420px; aspect-ratio:1/1; display:block; }
+    .pointer{ position:absolute; top:-6px; left:50%; transform:translateX(-50%); width:0; height:0; border-left:12px solid transparent; border-right:12px solid transparent; border-bottom:22px solid var(--accent); }
+    .center-cap{ position:absolute; width:18px; height:18px; border-radius:50%; background:var(--accent); box-shadow:0 0 0 6px #fff; }
+    .controls{ display:flex; justify-content:center; margin:18px 0 0; }
+    .btn{ background:#47c593; color:#fff; border:none; padding:12px 20px; border-radius:14px; font-weight:700; cursor:pointer; }
+    .pair-labels{ text-align:center; margin-top:6px; color:#2a6d57; font-size:13px; }
+    .modal-backdrop{ position:fixed; inset:0; background:rgba(0,0,0,.28); display:none; align-items:center; justify-content:center; padding:20px; }
+    .modal{ background:#fff; border-radius:18px; box-shadow:var(--shadow); width:min(560px,100%); padding:20px; }
+    .result-row{ display:grid; grid-template-columns: 1fr 24px 1fr; gap:10px; align-items:center; }
+    .result-col{ background:#f5fbf7; border:1px dashed #a8dac1; padding:12px; border-radius:12px; min-height:48px; display:flex; align-items:center; font-weight:700; }
+    .divider{ text-align:center; color:#7fb89d; font-weight:800; }
+    .actions{ display:flex; justify-content:flex-end; gap:10px; margin-top:14px; }
+    .ghost{ background:#eaf6f0; padding:10px 14px; border-radius:12px; border:1px solid #bfe7d2; cursor:pointer; }
+    .primary{ background:#47c593; color:#fff; padding:10px 16px; border-radius:12px; border:none; font-weight:700; cursor:pointer; }
+    .rotating{ transition: transform 3s cubic-bezier(.15,.85,.25,1); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1 class="title">🎯 雙輪盤抽籤遊戲</h1>
+    <div class="grid">
+      <section class="card">
+        <h2>When this Happen</h2>
+        <div class="wheel-box">
+          <div class="pointer"></div>
+          <svg class="wheel" viewBox="-100 -100 200 200" data-wheel="left"><g class="rotor"></g><circle r="3.5" class="center-cap"></circle></svg>
+        </div>
+      </section>
+      <section class="card">
+        <h2>You need to do...</h2>
+        <div class="wheel-box">
+          <div class="pointer"></div>
+          <svg class="wheel" viewBox="-100 -100 200 200" data-wheel="right"><g class="rotor"></g><circle r="3.5" class="center-cap"></circle></svg>
+        </div>
+      </section>
+    </div>
+    <div class="controls"><button id="startBtn" class="btn">Start</button></div>
+    <div class="pair-labels">左輪盤：When this Happen｜右輪盤：You need to do...</div>
+  </div>
+
+  <div class="modal-backdrop" id="modal">
+    <div class="modal">
+      <h3>結果 Result</h3>
+      <div class="result-row">
+        <div class="result-col" id="resLeft">—</div>
+        <div class="divider">＋</div>
+        <div class="result-col" id="resRight">—</div>
+      </div>
+      <div class="actions">
+        <button class="ghost" id="copyBtn">複製</button>
+        <button class="primary" id="closeBtn">關閉</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  const leftItems  = [
+    { code:'A1', text:'挖鼻孔' },
+    { code:'A2', text:'打噴嚏' },
+    { code:'A3', text:'拿起花瓶' },
+    { code:'A4', text:'拿著手機外放抖音' },
+    { code:'A5', text:'拔一根白頭髮' }
+  ];
+  const rightItems = [
+    { code:'B1', text:'指著天花板說急急如律綠' },
+    { code:'B2', text:'幫小陳拖地' },
+    { code:'B3', text:'拍拍胸說我全包了' },
+    { code:'B4', text:'拉著翁黃說我哀你' },
+    { code:'B5', text:'笑著說好啊你們都是騙我的' }
+  ];
+
+  function polarToCartesian(cx, cy, r, angleDeg){
+    const rad = (angleDeg-90) * Math.PI/180;
+    return { x: cx + r*Math.cos(rad), y: cy + r*Math.sin(rad) };
+  }
+  function describeSlice(r, startAngle, endAngle){
+    const start = polarToCartesian(0,0,r, endAngle);
+    const end   = polarToCartesian(0,0,r, startAngle);
+    const largeArc = endAngle - startAngle <= 180 ? 0 : 1;
+    return `M 0 0 L ${start.x} ${start.y} A ${r} ${r} 0 ${largeArc} 0 ${end.x} ${end.y} Z`;
+  }
+  function colorFor(i){
+    const pal = ['var(--slice1)','var(--slice2)','var(--slice3)','var(--slice4)','var(--slice5)','var(--slice6)'];
+    return pal[i % pal.length];
+  }
+  function renderWheel(svgEl, items){
+    const rotor = svgEl.querySelector('.rotor');
+    rotor.innerHTML = '';
+    const n = items.length; const step = 360 / n; const radius = 96;
+    for(let i=0;i<n;i++){
+      const start = i*step; const end = (i+1)*step;
+      const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+      path.setAttribute('d', describeSlice(radius, start, end));
+      path.setAttribute('fill', colorFor(i));
+      rotor.appendChild(path);
+      const labelAngle = start + step/2; const pos = polarToCartesian(0,0, radius*0.66, labelAngle);
+      const text = document.createElementNS('http://www.w3.org/2000/svg','text');
+      text.setAttribute('x', pos.x); text.setAttribute('y', pos.y+4);
+      text.setAttribute('text-anchor','middle'); text.setAttribute('font-size','10'); text.setAttribute('font-weight','700'); text.setAttribute('fill','#0e3b2f');
+      text.textContent = items[i].code; rotor.appendChild(text);
+    }
+    rotor.style.transform = `rotate(0deg)`;
+    rotor.classList.add('rotating');
+  }
+
+  const leftSvg  = document.querySelector('svg[data-wheel="left"]');
+  const rightSvg = document.querySelector('svg[data-wheel="right"]');
+  renderWheel(leftSvg, leftItems);
+  renderWheel(rightSvg, rightItems);
+
+  function getCurrentRotation(el){
+    const st = getComputedStyle(el).transform;
+    if(st === 'none') return 0;
+    const values = st.match(/matrix\(([^)]+)\)/);
+    if(!values) return 0;
+    const [a,b] = values[1].split(',').map(parseFloat);
+    const rad = Math.atan2(b, a);
+    return rad * (180/Math.PI);
+  }
+
+  function spin(svgEl, items){
+    const rotor = svgEl.querySelector('.rotor');
+    const n = items.length; const step = 360/n;
+    const index = Math.floor(Math.random()*n);
+    const centerAngle = index*step + step/2;
+    const current = getCurrentRotation(rotor);
+    const base = 1080;
+    const target = current + base + (360 - (centerAngle % 360));
+    rotor.style.transform = `rotate(${target}deg)`;
+    return { index, target };
+  }
+
+  const startBtn = document.getElementById('startBtn');
+  const modal    = document.getElementById('modal');
+  const resL     = document.getElementById('resLeft');
+  const resR     = document.getElementById('resRight');
+  const closeBtn = document.getElementById('closeBtn');
+  const copyBtn  = document.getElementById('copyBtn');
+
+  startBtn.addEventListener('click', () => {
+    startBtn.disabled = true;
+    const L = spin(leftSvg, leftItems);
+    const R = spin(rightSvg, rightItems);
+    setTimeout(() => {
+      const leftPick = leftItems[L.index];
+      const rightPick = rightItems[R.index];
+      resL.textContent = `${leftPick.code}｜${leftPick.text}`;
+      resR.textContent = `${rightPick.code}｜${rightPick.text}`;
+      modal.style.display = 'flex';
+      startBtn.disabled = false;
+    }, 3000);
+  });
+
+  closeBtn.addEventListener('click', () => modal.style.display='none');
+  modal.addEventListener('click', (e)=>{ if(e.target === modal) modal.style.display='none'; });
+  copyBtn.addEventListener('click', async () => {
+    const text = `When this Happen → ${resL.textContent}\nYou need to do... → ${resR.textContent}`;
+    try{ await navigator.clipboard.writeText(text); copyBtn.textContent='已複製'; setTimeout(()=>copyBtn.textContent='複製', 1200);}catch(e){}
+  });
+  </script>
+</body>
+</html>
